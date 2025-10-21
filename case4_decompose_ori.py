@@ -202,7 +202,7 @@ if __name__ == "__main__":
     savedir_npy = './241230_decomposed_npy/'
 
     for file in tqdm(filenames):
-        # if not file.endswith('E[0258]_11.npy'):
+        # if not file.endswith('E[0258]_18.npy'):
         #     continue
         # 读取信号
         X = np.load(os.path.join(dirpath, file))
@@ -213,6 +213,7 @@ if __name__ == "__main__":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # device = torch.device("cpu")  # 强制使用CPU
         X = torch.tensor(X, dtype=torch.float32, device=device)
+        
 
         # 初始化参数
         params = {

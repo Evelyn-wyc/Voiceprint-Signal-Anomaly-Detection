@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 
 gtdir = './synthetic_gtanomaly/'
 anomalydir = './synthetic_signal_npy/'
@@ -24,10 +24,37 @@ anomalyfiles.sort()
 # arr = np.load(os.path.join(gtdir, 'h1_s0_A.npy'))
 # pd.DataFrame(arr).to_csv(os.path.join(savedir, 'sample_anomaly.csv'), index=False, header=False)
 
+def calculate_reconstruction_metrics(a_true, a_est):
+
+    # 确保长度一致
+    min_len = min(len(a_true), len(a_est))
+    a_true = a_true[:min_len]
+    a_est = a_est[:min_len]
+    
+    # 计算误差
+    error = a_true - a_est
+    
+    # -- SNR --
+    power_signal = np.sum(a_true ** 2)
+    power_error = np.sum(error ** 2)
+    if power_signal == 0:
+        snr = float('inf')
+    else:
+        snr = 10 * np.log10(power_signal / (power_error + 1e-4))
+    
+    # -- RMSE --
+    rmse = np.sqrt(np.mean(error ** 2))
+    
+    # -- MAE --
+    mae = np.mean(np.abs(error))
+    
+    return {'SNR': snr, 'RMSE': rmse, 'MAE': mae}
+
 # 将所有结果保存到一个csv文件中
 result = []
 for gtfile in gtfiles:
-    if gtfile.endswith('.npy'):
+    # if gtfile.endswith('.npy') and gtfile.startswith('cpl'):
+    if gtfile.endswith('.npy') and gtfile.startswith('h'):
         anomalyfile = gtfile
         if anomalyfile in anomalyfiles:
             gt = np.load(os.path.join(gtdir, gtfile))
@@ -79,6 +106,8 @@ for gtfile in gtfiles:
             plt.savefig(os.path.join(savedir, f'{gtfile[:-4]}_roc_pr.png'))
             plt.close()
 
+            # 计算重构质量指标
+            recon_metrics = calculate_reconstruction_metrics(gt, anomaly)
 
             # 保存结果
             result_path = os.path.join(savedir, f'{gtfile[:-6]}_result.txt')
@@ -93,13 +122,16 @@ for gtfile in gtfiles:
                 f.write(f'F1 Score: {f1_score:.4f}\n')
                 f.write(f'AUROC: {roc_auc:.3f}\n')
                 f.write(f'AUPR: {avg_prec:.3f}\n')
+                f.write(f'SNR: {recon_metrics["SNR"]:.3f} dB\n')
+                f.write(f'RMSE: {recon_metrics["RMSE"]:.6f}\n')
+                f.write(f'MAE: {recon_metrics["MAE"]:.6f}\n')
             
-            result.append([gtfile[:-6], TP, TN, FP, FN, accuracy, precision, recall, f1_score, roc_auc, avg_prec])
-result_df = pd.DataFrame(result, columns=['Filename', 'TP', 'TN', 'FP', 'FN', 'Accuracy', 'Precision', 'Recall', 'F1 Score', 'AUROC', 'AUPR'])
+            result.append([gtfile[:-6], TP, TN, FP, FN, accuracy, precision, recall, f1_score, roc_auc, avg_prec, recon_metrics["SNR"], recon_metrics["RMSE"], recon_metrics["MAE"]])
+result_df = pd.DataFrame(result, columns=['Filename', 'TP', 'TN', 'FP', 'FN', 'Accuracy', 'Precision', 'Recall', 'F1 Score', 'AUROC', 'AUPR', 'SNR', 'RMSE', 'MAE'])
 result_df.to_csv(os.path.join(savedir, 'synthetic_anomaly_results.csv'), index=False)
 
 # 去掉nan和0之后计算每个指标的均值和标准差并保存
-metrics = ['AUROC', 'AUPR', 'Accuracy', 'Precision', 'Recall', 'F1 Score']
+metrics = ['AUROC', 'AUPR', 'SNR', 'RMSE', 'MAE', 'Accuracy', 'Precision', 'Recall', 'F1 Score']
 clean_df = result_df.dropna(subset=metrics)
 
 for m in metrics:
