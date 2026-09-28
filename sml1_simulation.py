@@ -38,7 +38,7 @@ def generate_pseudo_periodic(t, M, T_active_base, T_rest_base, jitter_std=0.2):
         t_now += T_total
     return P
 
-# P_true = generate_pseudo_periodic(t, M_base, T_active_base, T_rest_base)
+P_true_noncpl = generate_pseudo_periodic(t, M_base, T_active_base, T_rest_base)
 
 def generate_complex_periodic(
     t, 
@@ -100,7 +100,7 @@ def generate_complex_periodic(
     
     return P
 
-P_true = generate_complex_periodic(t, M_base, M_drift=0.2, M_fluctuation_std=0.1,
+P_true_cpl = generate_complex_periodic(t, M_base, M_drift=0.2, M_fluctuation_std=0.1,
                                     T_active_base=T_active_base, T_rest_base=T_rest_base,
                                     T_jitter_std=0.5, asymmetry_factor=1.2,
                                     baseline_amplitude=0.1, baseline_freq=0.05)
@@ -152,41 +152,69 @@ for hill_num in range(4):
         # 生成噪声 N(t)
         N_true = np.random.normal(0, 0.2, size=len(t))
 
+        # 全局字体设置（非常重要）
+        plt.rcParams.update({
+        "font.size": 22,          # 基础字体
+        "axes.titlesize": 22,     # 子图标题
+        "axes.labelsize": 22,
+        "xtick.labelsize": 22,
+        "ytick.labelsize": 22,
+        "legend.fontsize": 22
+        })
+
         # 合成观测信号
-        X = P_true + A_true + N_true
-
-        # # 储存信号
-        # np.save(f'{savedir}h{hill_num}_s{spike_cluster}.npy', X)
-        # np.save(f'{savedir_gt}h{hill_num}_s{spike_cluster}_A.npy', A_true)
-        # print(f'Saved synthetic signal with hill_num={hill_num}, spike_cluster={spike_cluster} to {savedir}h{hill_num}_s{spike_cluster}.npy')
-
-        # # ---- 绘制结果 ----
-        # plt.figure(figsize=(15,5))
-        # plt.plot(t, X, label='Observed X (P + A + N)', color='black', linewidth=1)
-        # plt.plot(t, P_true, label='True P (Pseudo-periodic)', color='blue', linestyle='--')
-        # plt.plot(t, A_true, label='True A (Wide Anomalies with Jitter)', color='red', linestyle='-.')
-        # plt.title('Synthetic Signal with Pseudo-periodicity, Tilted and Jittered Anomalies')
-        # plt.xlabel('Time')
-        # plt.ylabel('Signal Amplitude')
-        # plt.legend()
-        # plt.grid(True)
-        # plt.savefig(f'{savedir}h{hill_num}_s{spike_cluster}.png', dpi=300)
-        # plt.close()
+        X_noncpl = P_true_noncpl + A_true + N_true
 
         # 储存信号
-        np.save(f'{savedir}cpl_h{hill_num}_s{spike_cluster}.npy', X)
+        np.save(f'{savedir}h{hill_num}_s{spike_cluster}.npy', X_noncpl)
+        np.save(f'{savedir_gt}h{hill_num}_s{spike_cluster}_A.npy', A_true)
+        print(f'Saved synthetic signal with hill_num={hill_num}, spike_cluster={spike_cluster} to {savedir}h{hill_num}_s{spike_cluster}.npy')
+
+        # ---- 绘制结果 ----
+        plt.figure(figsize=(15,5))
+        plt.plot(t, X_noncpl, label='Observed X\nP + A + N', color='black', linewidth=1)
+        plt.plot(t, P_true_noncpl, label='True P\nQuasi-periodic', color='blue', linestyle='--')
+        plt.plot(t, A_true, label='True A\nAnomalies', color='red', linestyle='-.')
+        plt.title('Synthetic Signal with Quasi-periodicity, Tilted and Jittered Anomalies')
+        plt.xlabel('Time')
+        plt.ylabel('Signal Amplitude')
+        plt.legend(
+            loc='center left',
+            bbox_to_anchor=(1.01, 0.5),
+            frameon=False,
+            fontsize=18
+        )
+
+        plt.grid(True)
+
+        # 给右侧 legend 留空间
+        plt.tight_layout()
+        plt.savefig(f'{savedir}h{hill_num}_s{spike_cluster}.png', dpi=300)
+        plt.close()
+
+        # 合成观测信号
+        X_cpl = P_true_cpl + A_true + N_true
+
+        # 储存信号
+        np.save(f'{savedir}cpl_h{hill_num}_s{spike_cluster}.npy', X_cpl)
         np.save(f'{savedir_gt}cpl_h{hill_num}_s{spike_cluster}_A.npy', A_true)
         print(f'Saved synthetic signal with hill_num={hill_num}, spike_cluster={spike_cluster} to {savedir}cpl_h{hill_num}_s{spike_cluster}.npy')
 
         # ---- 绘制结果 ----
         plt.figure(figsize=(15,5))
-        plt.plot(t, X, label='Observed X (P + A + N)', color='black', linewidth=1)
-        plt.plot(t, P_true, label='True P (Pseudo-periodic)', color='blue', linestyle='--')
-        plt.plot(t, A_true, label='True A (Wide Anomalies with Jitter)', color='red', linestyle='-.')
-        plt.title('Synthetic Signal with Pseudo-periodicity, Tilted and Jittered Anomalies')
+        plt.plot(t, X_cpl, label='Observed X\nP + A + N', color='black', linewidth=1)
+        plt.plot(t, P_true_cpl, label='True P Complex\nQuasi-periodic', color='blue', linestyle='--')
+        plt.plot(t, A_true, label='True A\nAnomalies', color='red', linestyle='-.')
+        plt.title('Synthetic Signal with Complex Quasi-periodicity, Tilted and Jittered Anomalies')
         plt.xlabel('Time')
         plt.ylabel('Signal Amplitude')
-        plt.legend()
+        plt.legend(
+            loc='center left',
+            bbox_to_anchor=(1.01, 0.5),
+            frameon=False,
+            fontsize=18
+        )
         plt.grid(True)
+        plt.tight_layout()
         plt.savefig(f'{savedir}cpl_h{hill_num}_s{spike_cluster}.png', dpi=300)
         plt.close()

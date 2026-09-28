@@ -1,6 +1,7 @@
 '''
 Decompose the vecmode=1 vector signal into a normal (sometimes periodic, others stationary) and residual part
 Using a joint optimization approach with periodic and anomaly components
+支持4卡GPU并行处理
 '''
 import numpy as np
 import torch
@@ -9,16 +10,8 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
+from joblib import Parallel, delayed
 import pdb
-# from torch.utils.tensorboard import SummaryWriter
-# import shutil
-
-# # 在创建SummaryWriter之前添加
-# log_dir = "runs"  # 你的日志目录
-# shutil.rmtree(log_dir, ignore_errors=True)  # 自动删除旧日志
-
-# writer = SummaryWriter(log_dir)
-
 
 # 定义模型    
 class Periodic(nn.Module):
@@ -37,12 +30,6 @@ class Periodic(nn.Module):
         t_k = self.t_k.unsqueeze(1)  # [K, 1]
         T_active = self.T_active.unsqueeze(1)  # [K, 1]
 
-        # # 构造 mask
-        # tau = 0.5  # 控制边缘模糊程度（越大越sharp）
-        # mask_start = torch.sigmoid((t - t_k) * tau)
-        # mask_end = torch.sigmoid((t_k + T_active - t) * tau)
-        # mask = mask_start * mask_end  # shape: [K, T]
-
         relative_t = (t - t_k) / (T_active + 1e-6)  # [K, T]
         active_mask = (relative_t >= 0) & (relative_t <= 1)  # [K, T]
 
@@ -51,21 +38,13 @@ class Periodic(nn.Module):
         mask_end = torch.cos((1 - relative_t) * np.pi / 2)  # [K, T]
         mask = mask_start * mask_end  # shape: [K, T]
         mask = torch.clamp(mask, min=0, max=1)  # 确保mask在[0, 1]范围内
-        # mask = mask * active_mask.float()  # 仅在active区间内有效
 
         # 合成周期信号
         phase = torch.pi * relative_t  # [K, T]
         sinusoid = torch.sin(phase)  # shape: [K, T]
-        # P_k = self.M * sinusoid * mask  # shape: [K, T]，sigmoid mask
-        # P_k = sinusoid * mask  # shape: [K, T]，结果看起来平滑，实际上相当于sin^2
-        # P_k = self.M * sinusoid  # shape: [K, T]，按理说结果应当和self.M * mask相同，但实际更糟糕
-        # P_k = self.M * mask  # shape: [K, T] # 标准做法，结果很好
-        # P_k = mask # shape: [K, T]  # 仅使用mask，也许欠拟合但是结果也很好！
         P_k = self.M_independent.unsqueeze(1) * mask  # shape: [K, T]，每个周期独立幅度
         P = P_k.sum(dim=0)  # 聚合所有周期段
 
-        # P_k = self.M # 仅使用M，改变eta1和eta2，变大之后可以让M更平滑（不敏感），P_k也更平滑
-        # P = P_k # if so, return P.cpu().detach().numpy()
         A = torch.nn.functional.leaky_relu(self.A, negative_slope=0.01)  # 确保异常信号为非负
 
         return P, A
@@ -84,9 +63,9 @@ def extract_period_segments(P, t_k, T_active):
 
 
 class JointOptimizer:
-    def __init__(self, X, params):
+    def __init__(self, X, params, device_id=0):
         # 设备配置
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
         
         # 初始化模型组件
         self.periodic_model = Periodic(K_init=12, signal_length=len(X)).to(self.device)
@@ -112,28 +91,20 @@ class JointOptimizer:
         # 数据保真项 (l1)
         recon = P + A
         loss_data = torch.norm(self.X - recon, p=2)**2
-        # writer.add_scalar('Loss/data', loss_data.item(), global_step=0)
                 
         # 异常项 (l2)
         loss_A_l1 = self.lambda1 * torch.norm(A, p=1)
         A_diff = torch.diff(A)
         loss_A_tv = self.lambda2 * torch.norm(A_diff, p=1)
-        # writer.add_scalar('Loss/A_l1', loss_A_l1.item(), global_step=0)
-        # writer.add_scalar('Loss/A_tv', loss_A_tv.item(), global_step=0)
         
         # 周期参数 (l3)
-        # M_diff = torch.diff(self.periodic_model.M)
         M_diff = torch.diff(self.periodic_model.M_independent)
         loss_M_tv = self.eta1 * torch.norm(M_diff, p=1)
-        # M_2_diff = torch.diff(self.periodic_model.M, 2)
         M_2_diff = torch.diff(self.periodic_model.M_independent, 2)
         loss_M_2_smooth = self.eta2 * torch.norm(M_2_diff, p=1)
         T_diff = torch.diff(self.periodic_model.T_active)
         loss_T_tv = self.eta3 * torch.norm(T_diff, p=1)
         loss_prd = loss_M_tv + loss_M_2_smooth + loss_T_tv
-        # writer.add_scalar('Loss/M_tv', loss_M_tv.item(), global_step=0)
-        # writer.add_scalar('Loss/M_2_smooth', loss_M_2_smooth.item(), global_step=0)
-        # writer.add_scalar('Loss/T_tv', loss_T_tv.item(), global_step=0)
 
         # 周期波动项相似性 (l4)：对于相邻的两个active，要求形状相似
         loss_similarity = 0
@@ -144,7 +115,6 @@ class JointOptimizer:
             if min_len > 5:  # 过滤过短片段
                 loss_similarity += torch.norm(seg1[:min_len] - seg2[:min_len], p=2) ** 2
         loss_similarity = self.psi * loss_similarity
-        # writer.add_scalar('Loss/similarity', loss_similarity.item(), global_step=0)
         
         # 总损失
         total_loss = (loss_data + loss_A_l1 + loss_A_tv + loss_prd + loss_similarity) / len(self.X)
@@ -168,11 +138,6 @@ class JointOptimizer:
             period_optim.step()
 
             epoch_bar.set_postfix(loss=f"{loss.item(): .4f}")
-            # for i in self.periodic_model.named_parameters():
-            #     if epoch % 200 == 0:
-            #         # pdb.set_trace()  # 调试断点
-            #         # print(i[1].grad,f"Parameter: {i[0]}, requires_grad: {i[1].requires_grad}, shape: {i[1].shape}, device: {i[1].device}")
-            #         print(f"Parameter: {i[0]}, Data: {i[1].data}")
 
     def get_components(self):
         with torch.no_grad():
@@ -182,6 +147,83 @@ class JointOptimizer:
                   "M_independent: ", self.periodic_model.M_independent,
                   "A: ", self.periodic_model.A)
         return P.cpu().numpy(), A.cpu().numpy()
+
+
+def process_single_signal(idx, file, dirpath, savedir, savedir_npy, params, num_gpus):
+    """处理单个信号的函数（用于joblib并行）
+    
+    Args:
+        idx: 信号索引（用于GPU轮值）
+        file: 文件名
+        dirpath: 输入目录
+        savedir: 图像保存目录
+        savedir_npy: numpy保存目录
+        params: 优化参数
+        num_gpus: GPU总数
+    
+    Returns:
+        str: 处理结果信息
+    """
+    gpu_id = idx % num_gpus
+    
+    try:
+        # 读取信号
+        X = np.load(os.path.join(dirpath, file))
+        time = np.linspace(0, 3600, len(X))  # 时间轴
+        
+        # 创建优化器实例（使用指定的GPU）
+        optimizer = JointOptimizer(X.copy(), params, device_id=gpu_id)
+        optimizer.current_file = file
+        optimizer.alternating_optimization(epochs=1500)
+        P, A = optimizer.get_components()
+        
+        # 将结果转化为numpy数组并保存
+        base_filename = file[:-4]  # 去掉.npy后缀
+        p_save_path = os.path.join(savedir_npy, f'{base_filename}_P.npy')
+        a_save_path = os.path.join(savedir_npy, f'{base_filename}_A.npy')
+        np.save(p_save_path, P)
+        np.save(a_save_path, A)
+        
+        # 可视化结果
+        # 全局字体设置（非常重要）
+        plt.rcParams.update({
+        "font.size": 26,          # 基础字体
+        "axes.titlesize": 26,     # 子图标题
+        "axes.labelsize": 22,
+        "xtick.labelsize": 22,
+        "ytick.labelsize": 22,
+        "legend.fontsize": 22
+        })
+        plt.figure(figsize=(14, 9), dpi=300)
+        plt.subplot(4, 1, 1)
+        plt.plot(time, X, label='Original Signal', linewidth=1.5)
+        plt.title('Original Signal')
+        plt.subplot(4, 1, 2)
+        plt.plot(time, P, label='Periodic', color='green', linewidth=1.5)
+        T_active = optimizer.periodic_model.T_active.cpu().detach().numpy()
+        t_k = optimizer.periodic_model.t_k.cpu().detach().numpy()
+        # 在周期线上标注出周期起始点
+        for i in range(len(t_k)):
+            plt.axvline(x=t_k[i], color='purple', linestyle='--', linewidth=0.5)
+            plt.axvline(x=t_k[i] + T_active[i], color='orange', linestyle='--', linewidth=0.5)
+            # 在t_k[i]到T_active[i]之间标注周期长度
+            plt.text((t_k[i] + t_k[i] + T_active[i]) / 2, 0, f'{T_active[i]:.1f}', color='purple', fontsize=8, ha='center')
+        plt.title('Periodic')
+        plt.subplot(4, 1, 3)
+        plt.plot(time, A, label='Anomaly', color='red', linewidth=1.5)
+        plt.title('Anomaly')
+        plt.subplot(4, 1, 4)
+        plt.plot(time, X - P - A, label='Residual', color='orange', linewidth=1.5)
+        plt.title('Residual')
+        plt.tight_layout()
+        plt.savefig(os.path.join(savedir, f'{base_filename}.png'), bbox_inches='tight')
+        plt.close()
+        
+        return f"✓ {file} [GPU {gpu_id}]"
+    
+    except Exception as e:
+        import traceback
+        return f"✗ {file} - Error: {str(e)}\n{traceback.format_exc()}"
 
 
 if __name__ == "__main__":
@@ -201,70 +243,37 @@ if __name__ == "__main__":
         os.makedirs('./241230_decomposed_npy/')
     savedir_npy = './241230_decomposed_npy/'
 
-    for file in tqdm(filenames):
-        # if not file.endswith('E[0258]_18.npy'):
-        #     continue
-        # 读取信号
-        X = np.load(os.path.join(dirpath, file))
-        print(f'Signal shape: {X.shape}')
-        time = np.linspace(0, 3600, len(X))  # 时间轴
-
-        # 转化为pytorch张量
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # device = torch.device("cpu")  # 强制使用CPU
-        X = torch.tensor(X, dtype=torch.float32, device=device)
-        
-
-        # 初始化参数
-        params = {
-            'lambda1': 1.5, # A L1系数
-            'lambda2': 1.0, # A TV系数
-            'eta1': 0.3, # M的TV系数
-            'eta2': 0.3, # M的二阶平滑系数
-            'eta3': 0.1, # T_active的TV系数
-            'psi': 10 # 周期项相似性系数
-        }
-
-        # 创建优化器实例
-        optimizer = JointOptimizer(X, params)
-        optimizer.current_file = file  # 保存当前文件名到优化器实例中
-        optimizer.alternating_optimization(epochs=1500)
-        P, A = optimizer.get_components()
-
-        # 将结果转化为numpy数组
-        X = X.cpu().numpy()
-        base_filename = file[:-4]  # 去掉.npy后缀
-        p_save_path = os.path.join(savedir_npy, f'{base_filename}_P.npy')
-        a_save_path = os.path.join(savedir_npy, f'{base_filename}_A.npy')
-        np.save(p_save_path, P)
-        np.save(a_save_path, A)
-
-        # 可视化结果
-        plt.figure(figsize=(12, 8))
-        plt.subplot(4, 1, 1)
-        plt.plot(time, X, label='Original Signal')
-        # plt.ylim(0, 800)
-        plt.title('Original Signal')
-        plt.subplot(4, 1, 2)
-        plt.plot(time, P, label='Periodic', color='green')
-        T_active = optimizer.periodic_model.T_active.cpu().detach().numpy()
-        t_k = optimizer.periodic_model.t_k.cpu().detach().numpy()
-        # 在周期线上标注出周期起始点
-        for i in range(len(t_k)):
-            plt.axvline(x=t_k[i], color='purple', linestyle='--', linewidth=0.5)
-            plt.axvline(x=t_k[i] + T_active[i], color='orange', linestyle='--', linewidth=0.5)
-            # 在t_k[i]到T_active[i]之间标注周期长度
-            plt.text((t_k[i] + t_k[i] + T_active[i]) / 2, 0, f'{T_active[i]:.1f}', color='purple', fontsize=8, ha='center')
-
-        # plt.ylim(0, 800)
-        plt.title('Periodic')
-        plt.subplot(4, 1, 3)
-        plt.plot(time, A, label='Anomaly', color='red')
-        # plt.ylim(0, 800)
-        plt.title('Anomaly')
-        plt.subplot(4, 1, 4)
-        plt.plot(time, X - P - A, label='Residual', color='orange')
-        # plt.ylim(0, 800)
-        plt.title('Residual')
-        plt.tight_layout()
-        plt.savefig(f'{savedir}{file[:-4]}.png')
+    # 初始化参数
+    params = {
+        'lambda1': 1.5, # A L1系数
+        'lambda2': 1.0, # A TV系数
+        'eta1': 0.3, # M的TV系数
+        'eta2': 0.3, # M的二阶平滑系数
+        'eta3': 0.1, # T_active的TV系数
+        'psi': 10 # 周期项相似性系数
+    }
+    
+    # 获取所有需要处理的.npy文件
+    signal_files = sorted([f for f in filenames if f.endswith('.npy')])
+    
+    # GPU配置
+    num_gpus = 4
+    num_available_gpus = torch.cuda.device_count()
+    num_gpus = min(num_gpus, num_available_gpus) if num_available_gpus > 0 else 1
+    
+    print(f"Found {len(signal_files)} signal files")
+    print(f"Available GPUs: {num_available_gpus}, Using: {num_gpus}")
+    print("="*60)
+    
+    # 使用joblib进行4卡GPU并行处理
+    print("Starting parallel processing...\n")
+    results = Parallel(n_jobs=num_gpus, verbose=10)(
+        delayed(process_single_signal)(idx, file, dirpath, savedir, savedir_npy, params, num_gpus) 
+        for idx, file in enumerate(signal_files)
+    )
+    
+    print("\n" + "="*60)
+    print("Processing Complete!")
+    print("="*60)
+    for result in results:
+        print(result)
