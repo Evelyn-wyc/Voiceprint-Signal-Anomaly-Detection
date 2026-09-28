@@ -21,7 +21,8 @@ Auxiliary/
 __pycache__/
 ablation_analysis/
 ablation_results/
-comparison/
+comparison/case/
+comparison/simulation/
 fixed_audio/
 image/
 runs/
@@ -38,8 +39,4 @@ AE.py
 case4_decompose_prox(lose).py
 check_gpu_setup.py
 compress.py
-csv2npy.py
-data1_gt_xwidth.py
-plot_*.py
-run_parallel.sh
 result.png
