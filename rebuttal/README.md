@@ -1,200 +1,172 @@
-# QPAD 返修实验代码
+# QPAD 返修实验
 
-`rebuttal/` 用于维护返修新增或修改的代码、配置和服务器运行入口。问题拆解与实验决策集中在 [notes](../TTQM/review/notes.md)，逐条回复集中在 [draft](../TTQM/review/Response_to_Reviewers_draft.md)。
+入口：`experiments.py`。固定方案与参数见 [PROTOCOL.md](PROTOCOL.md) 和 [configs/necessary.json](configs/necessary.json)。正式结果由服务器运行产生。
 
-## 实验设计与实现状态
+## 实验范围
 
-| 工作 | 目的与设计 | 当前状态 |
+| 实验 | 数据与运行 | 回应意见 |
 |---|---|---|
-| 服务器预检 | 检查 Python/PyTorch、指定设备、输入/真值及代码路径；读取输入形状和哈希 | 已实现：`run.py check`；不执行拟合 |
-| 原模型相位诊断 | 简单 `h2_s2` 与复杂 `cpl_h2_s2`，各用起点偏移 0/50 点，共 4 次；每次 2000 步 | 已实现：`run.py diagnose` |
-| C：初始化与求解方式 | 同一修正模型上比较均匀/自动初始化 × 联合更新/分块求解；2 条信号 × 4 配置 × 5 初值条件，共 40 次试运行 | 方案已写入 notes，修正模型和运行入口待实现 |
-| A：公平比较与评价 | 修复 QPGP、核对周期单位，保留连续分数与有效零分样本；统一阈值及评价协议，补代表方法 | 待实现 |
-| B：失配、噪声与异常形态 | 代表性非对称/双峰背景、噪声强度、负向/双向异常及无异常对照；独立生成并保存真值 | 待实现 |
-| 回传结果汇总 | 逐次指标、相位变化引起的目标/异常误差变化，以及 P/A 分量差异；保留失败与缺失 | 已实现：`summarize.py` |
+| A：统一评价和基线比较 | 现有 88 个真实片段；仿真部分共用 B。比较 QPAD、STL、VMD、QPGP、周期矩阵 RPCA，保存连续分数；统一报告预定阈值和零阈值 | R1.3、R1.5；耗时支持 R2.5 |
+| B：适用范围 | 7 个场景 × 5 个种子 = 35 条新仿真：常规、非对称、双峰、高噪声、负向、双向、无异常；五种方法使用同一输入和标签 | R1.1、R2.3、R2.4 |
+| C：初值敏感性 | 共用 B 的两条固定输入及默认 QPAD 结果，各增加 5 个预定随机初值，保存全部结果并报告方差 | R1.2、R2.5 |
 
-### 当前四次诊断具体做什么
+默认总计 **625 次方法拟合**：123 条输入 × 5 种方法，加 C 的 10 次 QPAD 拟合。QPAD 共 133 次，其余四种方法各 123 次。阈值 2/3/4 倍比较、单向/双向评分和统计汇总均复用分解结果。
 
-| 信号 | 起点偏移 | 改变内容 |
-|---|---:|---|
-| `h2_s2` | 0 点 | 原默认初始化 |
-| `h2_s2` | +50 点 | 所有事件起点整体后移，其他初值和参数保持一致 |
-| `cpl_h2_s2` | 0 点 | 原默认初始化 |
-| `cpl_h2_s2` | +50 点 | 所有事件起点整体后移，其他初值和参数保持一致 |
+QPAD 使用 `models/` 中的归档定义和原参数：仿真 2000 步、真实 1500 步。基线和评分的具体实现、模型限制与参数选择方式均写在 PROTOCOL.md。完成运行后才能判断哪些有效性结论得到支持。
 
-信号长度 N=2000、K=10；默认事件间隔约 200 点，因此 +50 点约为四分之一周期。Adam 学习率为 0.01，原目标乘以 10 后反向传播，正则参数由 `configs/original_phase_probe.json` 固定。它检查原模型对初始相位的敏感性，并核对服务器运行情况。只有两个相位条件，不能估计一般随机初值的方差。
+## 1. 服务器从 GitHub 同步
 
-原模型优先从 `scripts/sml2_decompose.py` 加载；旧服务器目录也支持根目录的 `sml2_decompose.py`。只读取模型定义，不执行原脚本批处理入口。设备由新入口明确指定。
-
-**局部支持、连续相似性、自动初始化和凸异常子问题尚待实现。** 当前诊断没有应用这些修改，也没有计算新的 F1/AUROC/AP。正式 C 应在同一修正模型上比较四种配置，再决定扩大到 A/B 的规模。
-
-```text
-rebuttal/
-├── run.py                          # 服务器预检与原模型相位诊断
-├── summarize.py                    # 回传后的指标与分量差异汇总
-├── configs/
-│   ├── original_phase_probe.json   # 共享诊断配置
-│   └── server.local.json           # 可选本机路径配置，Git 忽略
-├── outputs/                        # 每次运行独立目录，Git 忽略
-├── .gitignore
-└── README.md
-```
-
-## 路径、环境和设备
-
-只依赖 NumPy 和 PyTorch 执行当前诊断。优先使用服务器已有实验环境；原 `environment.yml` 的名称为 `windturbine`，其中包含 PyTorch 2.5.1/CUDA 12.4。实际版本和设备由 `check` 确认。
-
-默认配置自动查找以下路径，先使用整理后的目录，再使用旧目录：
-
-| 内容 | 整理后 | 旧目录 |
-|---|---|---|
-| 信号 | `data/simulation/synthetic_signal/` | `synthetic_signal/` |
-| 异常真值 | `data/simulation/synthetic_gtanomaly/` | `synthetic_gtanomaly/` |
-| 原模型 | `scripts/sml2_decompose.py` | `sml2_decompose.py` |
-
-需要 `h2_s2.npy`、`cpl_h2_s2.npy`，以及真值目录下对应的 `*_A.npy`，均为长度 2000 的一维数组。数据通过服务器本地路径读取。
-
-`--device auto` 有可用 CUDA 时选 `cuda:0`，否则用 CPU；可以明确指定 `--device cuda:1` 或 `--device cpu`。指定不存在的 GPU 时预检会失败，避免误以为正在 GPU 上运行。
-
-配置中的相对路径和路径类命令行参数均以仓库根目录为基准。可选覆盖项：
-
-```text
---config CONFIG.json
---signal-dir PATH
---anomaly-dir PATH
---model-source PATH
---output-root PATH
---device cpu|cuda:N|auto
---epochs N
-```
-
-服务器路径可写进 `rebuttal/configs/server.local.json`（复制共享配置后修改）。该文件被 Git 忽略；共享配置保留可复现的实验参数。
-
-## 第一步：WSL 上传到 GitHub
-
-目前工作区还有之前目录整理产生的变更。以下步骤只提交这次准备的服务器运行目录；服务器已有的原模型文件可以直接使用。
-
-在 WSL 执行（当前分支为 `review`）：
+已建立的目录为 `~/QPAD_rebuttal`，原数据位于相邻的 `~/Voiceprint`。
 
 ```bash
-cd /home/wyc/code/thu/research/Voiceprint
-git branch --show-current
-git add rebuttal/
-git diff --cached --stat
-git commit -m "Add QPAD revision diagnostics and result summaries"
-git push origin review
-```
-
-确认当前分支为 `review`，暂存区内容符合本次上传范围。稿件及双语回复可以另行选定文件提交；批量数据和输出保留在各自机器上。
-
-## 第二步：服务器同步与运行
-
-建议用独立工作目录运行返修，便于复用旧数据并保留服务器已有代码。第一次执行：
-
-```bash
-cd ~/Voiceprint
+cd ~/QPAD_rebuttal
 git fetch origin
-git worktree add --detach ../Voiceprint-rebuttal origin/review
-cd ../Voiceprint-rebuttal
+git switch review
+git pull --ff-only origin review
+git log -1 --oneline
 conda activate windturbine
+python -m pip install -r rebuttal/requirements.txt
 ```
 
-若服务器环境名称不同，激活已安装 NumPy/PyTorch 的实际环境。下面按服务器旧数据目录给出示例；如果数据已经整理到 `data/simulation/`，将两个路径替换为对应位置。
-
-先预检：
+服务器的 GitHub SSH 连接可检查：
 
 ```bash
-python rebuttal/run.py check \
-  --signal-dir ../Voiceprint/synthetic_signal \
-  --anomaly-dir ../Voiceprint/synthetic_gtanomaly \
+ssh -T git@github.com
+```
+
+GitHub 显示成功认证但不提供 shell 是正常反馈。若当前远端为 HTTPS、希望使用已经配置的 SSH 密钥，可设置：
+
+```bash
+git remote set-url origin git@github.com:Evelyn-wyc/Voiceprint-Signal-Anomaly-Detection.git
+```
+
+`git pull --ff-only` 若报告分叉或本地代码冲突，应保留报错和本地修改，再处理同步；输出目录与本机配置已由 `.gitignore` 排除。
+
+## 2. 预检
+
+```bash
+cd ~/QPAD_rebuttal
+python rebuttal/experiments.py check \
+  --data-root "$HOME/Voiceprint" \
   --device cuda:0
 ```
 
-预检成功后启动原模型诊断：
+应显示 `status: ready`、88 个真实输入、35 个仿真输入、625 次拟合。预检读取标签、检查文件长度和设备、检查所有依赖，不执行拟合。
+
+自动识别数据目录：
+
+| 内容 | 整理后的路径（相对 data-root） | 旧路径 |
+|---|---|---|
+| 真实特征 | `data/processed/241230_vector_npy/` | `241230_vector_npy/` |
+| 矩形标注 | `data/annotations/241230_gt/` | `241230_gt/` |
+| 已转换标签（备用） | `data/annotations/241230_gt_xwidth/` | `241230_gt_xwidth/` |
+
+可用 `--real-signal-dir /实际目录 --real-label-dir /实际目录` 显式指定。CSV 支持逗号/制表符分隔的 X/Width 或 start/end；也支持 `*_xwidth.npy` 二值标签。35 条仿真由本次固定生成器创建，X/P/A/noise/事件标签成套保存。
+
+## 3. 运行 A/B/C
+
+建议在 `tmux` 会话内执行，便于断开 SSH 后继续运行：
 
 ```bash
-python rebuttal/run.py diagnose \
-  --signal-dir ../Voiceprint/synthetic_signal \
-  --anomaly-dir ../Voiceprint/synthetic_gtanomaly \
-  --device cuda:0
+tmux new -s qpad-review
 ```
 
-当前诊断顺序运行四次拟合，无多 GPU 并行假设。远程长任务可在已有的 `tmux` 会话或服务器作业系统中启动同一命令。
-
-后续 WSL 更新并 push 后，在服务器返修工作目录执行：
+在会话内：
 
 ```bash
-cd ~/Voiceprint-rebuttal
-git status --short
-git fetch origin
-git switch --detach origin/review
+cd ~/QPAD_rebuttal
+conda activate windturbine
+python rebuttal/experiments.py run \
+  --data-root "$HOME/Voiceprint" \
+  --device cuda:0 \
+  --output rebuttal/outputs/necessary_v1
 ```
 
-该工作目录用于拉取已提交的返修代码；本机配置放 `*.local.json`。如果直接在服务器修改共享代码，应先保存并同步那些修改，再更新工作目录。
+按 `Ctrl+B`，松开后按 `D` 可离开会话；返回用 `tmux attach -t qpad-review`。程序逐次打印进度，完成后自动生成 `analysis/report.md`。QPAD 使用指定 GPU，其他方法在 CPU 上运行，默认各设 1 个计算线程。
 
-## 第三步：找到服务器输出
+### 中断后继续
 
-使用上面的独立工作目录时，每次运行会打印输出位置，并建立：
+```bash
+python rebuttal/experiments.py run \
+  --data-root "$HOME/Voiceprint" \
+  --device cuda:0 \
+  --output rebuttal/outputs/necessary_v1 \
+  --resume
+```
+
+续跑会核对配置、代码哈希、输入和依赖版本，验证已有分解文件后跳过完成项；失败项重新尝试，历史失败保留在 `events.jsonl`。损坏的完成文件会报错。改变配置或代码后使用新的输出目录。
+
+可用 `--parts A` 或 `--parts B C` 分开运行，**每个范围使用不同输出目录**；默认一次运行 A/B/C 最便于汇总。`--parts C` 会自动计算所需两条输入的默认 QPAD 结果，再运行随机初值。
+
+## 4. 看结果、回传给 WSL
+
+先粘贴这份报告的完整内容：
+
+```bash
+cat ~/QPAD_rebuttal/rebuttal/outputs/necessary_v1/analysis/report.md
+```
+
+如中途报错，粘贴终端报错；完整运行中的单次失败还会写入 `analysis/failures.csv`。返回码 0 表示运行和材料完整，1 表示存在失败/缺失，2 表示配置、环境或输入错误。
+
+**进一步分析需要回传整个 `necessary_v1/` 文件夹**，保留如下内容：
 
 ```text
-~/Voiceprint-rebuttal/rebuttal/outputs/phase_<UTC时间>/
+necessary_v1/
+├── config.json                 # 实际配置
+├── manifest.json               # Git、源码、输入哈希、环境、计划任务
+├── inputs/*.npz                # X、标签；仿真另含 P/A/noise 真值
+├── fits/*.npz                  # P/A、连续分数；QPAD 初末参数和目标曲线
+├── fits/*.json                 # 每次拟合参数、状态、计时和全部指标
+├── events.jsonl                # 每次尝试及失败记录
+├── progress.json
+└── analysis/
+    ├── report.md
+    ├── summary.json
+    ├── fits.csv
+    ├── metrics.csv
+    ├── metrics_by_group.csv
+    ├── paired_comparisons.csv
+    ├── initialization.csv
+    └── failures.csv
 ```
 
-目录包含：
-
-- `manifest.json`：代码提交、相关工作区状态、模型/运行脚本/配置及输入哈希、Python 和依赖版本、设备与计时范围。
-- `config.json`：解析后的实际参数、输入路径和设备。
-- `summary.json`：每次运行的完成/失败状态、最终目标、异常 RMSE、起点/时长移动量及耗时。
-- `*_trace.csv`：每 50 步及最终目标值，step=0 为首次更新前，step=N 为完成 N 次更新后。
-- `*.npz`：P/A 分量及初始/最终时序参数。
-
-达到 2000 步只标记为完成固定迭代预算，不标记为已收敛。单次失败保留错误记录，并使总命令返回非零退出码。需要比较 CPU/GPU 时应分别运行并保留版本信息，不能将浮点实现差异直接解释成初始化影响。
-
-正式 C/A/B 的配置与结果将继续沿用独立输出、版本记录和保留失败样本的规则。输出目录按需传回 WSL，用于更新 notes、正文和回复中的结果；Git 用于同步代码与共享配置。
-
-## 第四步：从服务器回传到 WSL
-
-回传整个输出目录，包含分解数组、目标曲线、配置和运行记录。运行结束后，在 **WSL** 执行：
+在 **WSL** 执行，替换实际服务器 SSH 地址或别名：
 
 ```bash
 cd /home/wyc/code/thu/research/Voiceprint
 mkdir -p results/rebuttal/server
 QPAD_SERVER='wangyichun@服务器地址'
-rsync -av --progress "${QPAD_SERVER}:Voiceprint-rebuttal/rebuttal/outputs/" results/rebuttal/server/
+rsync -av --progress "${QPAD_SERVER}:QPAD_rebuttal/rebuttal/outputs/necessary_v1" results/rebuttal/server/
 ```
 
-将 `QPAD_SERVER` 改成平时使用的 SSH 登录名或 SSH 别名。远端路径相对于该账号的 home；如果实际工作目录不同，相应调整。两个目录末尾的 `/` 表示把各个 `phase_*` 目录直接放入本地 `results/rebuttal/server/`。再次运行会增量同步；完成运行后再回传，便于核对齐备性。
-
-如果任一端没有 rsync，可以使用：
+如果使用手动复制，可在服务器先打包：
 
 ```bash
-scp -r "${QPAD_SERVER}:Voiceprint-rebuttal/rebuttal/outputs/." results/rebuttal/server/
+cd ~/QPAD_rebuttal
+tar -czf rebuttal/outputs/necessary_v1.tar.gz -C rebuttal/outputs necessary_v1
 ```
 
-输出不通过 Git 传输。代码与配置的版本信息已经随运行写入 `manifest.json`。
+下载后在 WSL 解压到 `results/rebuttal/server/`。确认出现 `results/rebuttal/server/necessary_v1/manifest.json`。这些输出通过文件传输回传；Git 用于代码与配置。
 
-## 第五步：在 WSL 汇总分析
-
-选择回传后的实际 `phase_*` 目录，运行：
+回传后可重新核验汇总（需要 NumPy/SciPy/scikit-learn，无需 GPU）：
 
 ```bash
-python3 rebuttal/summarize.py results/rebuttal/server/phase_实际时间
+python rebuttal/experiments.py summarize \
+  --output results/rebuttal/server/necessary_v1
 ```
 
-将 `phase_实际时间` 替换为返回的目录名。该步骤仅需 NumPy，不需要 PyTorch 或 GPU；也可以先在服务器对同一个目录执行。输出保存在该目录的 `analysis/`：
+## 代码与验证
 
-| 文件 | 内容 |
-|---|---|
-| `runs.csv` | 每次拟合的目标、异常真值 RMSE、时序移动、耗时和状态 |
-| `phase_comparison.csv` | 相对 0 偏移的 Δ目标、Δ异常真值 RMSE、P/A 分量间 RMSE |
-| `report.md` | 可读的汇总表、失败/缺失情况和解释范围 |
+- `datasets.py`：成套仿真真值和真实标注读取。
+- `models/`、`qpad_fit.py`：归档模型、固定参数、初值扰动与曲线记录。
+- `baselines.py`：按采样点估计周期，STL/VMD/QPGP/RPCA 连续输出。
+- `evaluation.py`、`report.py`：阈值、有效零指标、按录音/种子分组的配对比较和材料核查。
+- `run.py`、`summarize.py`：此前四次相位诊断的复现入口。
 
-汇总会核对配置与运行记录是否一致，并检查预期运行和分解/曲线文件是否齐备。失败、未执行或回传不完整的条目保留在表中，不参与分量差异计算。齐备时退出码为 0，有失败/缺失时为 1，输入无法解析时为 2。
+功能测试使用小型合成数组：
 
-拿到结果后，分析顺序为：核对代码/配置/输入版本 → 检查完成与失败状态 → 比较目标及异常误差 → 对比 P/A 分量与目标曲线 → 判断原问题是否在服务器复现，并据此确定修改模型后的 C 试运行。P 分量间差异反映初值敏感性，不能替代对真实背景的恢复误差。先将判断写入 notes，正式证据齐备后更新正文与逐条回复。
+```bash
+python -m unittest discover -s rebuttal/tests -v
+```
 
-## 本地功能校验（2026-09-30）
-
-已在 WSL 的 PyTorch 2.12.0+cpu 环境完成：真实输入的只读预检；临时合成数组的一次更新与原优化器逐值一致；输出及运行记录检查；旧目录识别；缺失输入、不可用 GPU 和无效迭代数的报错检查。正式拟合实验留在服务器执行，CUDA 路径仍需在服务器验证。
-
-回传汇总使用临时构造的结果验证了分量差异与指标差值，并检查失败、缺失运行、回传材料不全及配置不一致的处理。汇总过程不执行模型拟合。
+QPGP 协方差求解、对数行列式和条件均值与直接稠密矩阵计算对照；同时验证原 QPAD 一步更新、RPCA、标签边界、评价、完整输出、续跑和损坏文件识别。正式 CUDA 拟合由服务器运行验证。

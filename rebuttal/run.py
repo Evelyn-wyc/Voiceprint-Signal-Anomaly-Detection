@@ -1,7 +1,7 @@
 """Server preflight and four phase probes of the archived QPAD model.
 
 Usage: python rebuttal/run.py check | diagnose [--config PATH] [--device cpu|cuda:0]
-The revised solver and experiment C's 2x2 comparison are separate future work.
+The A/B/C revision suite is provided by experiments.py.
 """
 import argparse
 import ast

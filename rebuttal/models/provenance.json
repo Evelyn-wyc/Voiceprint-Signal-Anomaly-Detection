@@ -1,0 +1,26 @@
+{
+  "simulation": {
+    "source": "scripts/sml2_decompose.py",
+    "source_sha256": "44796849623ffed9485a618669dca73d6f9e57324990475d4404623863c2fac7",
+    "definitions": [
+      "Periodic",
+      "extract_period_segments",
+      "JointOptimizer"
+    ],
+    "git_reference_commit": "5479bae179a5b2ed9cddfeaaaa8dbb2c320f04d8",
+    "git_reference_path": "sml2_decompose.py",
+    "git_reference_sha256": "62bdd5dd9d5fdecf0a63a4900a662227176613879058cfec2ca30f00fee71dac"
+  },
+  "real": {
+    "source": "scripts/case4_decompose_ori.py",
+    "source_sha256": "5f6809786480791e9f5b44d6ff2b7faa9af5bdcbbb0b20ddede367f87a87e585",
+    "definitions": [
+      "Periodic",
+      "extract_period_segments",
+      "JointOptimizer"
+    ],
+    "git_reference_commit": "5479bae179a5b2ed9cddfeaaaa8dbb2c320f04d8",
+    "git_reference_path": "case4_decompose_ori.py",
+    "git_reference_sha256": "5c70f435f46d9d4f71ad70cbfb0015e144d66d384abf8939302e0d3bf4ce1c9e"
+  }
+}

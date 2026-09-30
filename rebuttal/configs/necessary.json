@@ -1,0 +1,25 @@
+{
+  "experiment": "necessary_rebuttal_v1",
+  "methods": ["QPAD", "STL", "VMD", "QPGP", "RPCA"],
+  "simulation": {
+    "length": 2000,
+    "period": 200,
+    "seeds": [0, 1, 2, 3, 4],
+    "scenarios": ["nominal", "asymmetric", "double_peak", "high_noise", "negative", "bidirectional", "normal"]
+  },
+  "real": {"expected_count": 88, "length": 3600},
+  "qpad": {
+    "learning_rate": 0.01, "loss_scale": 10.0, "trace_every": 50,
+    "simulation": {"K": 10, "epochs": 2000, "parameters": {"lambda1": 1.5, "lambda2": 1.0, "eta1": 0.15, "eta2": 0.15, "eta3": 0.05, "psi": 2.0}},
+    "real": {"K": 12, "epochs": 1500, "parameters": {"lambda1": 1.5, "lambda2": 1.0, "eta1": 0.3, "eta2": 0.3, "eta3": 0.1, "psi": 10.0}}
+  },
+  "baselines": {
+    "period_min_fraction": 0.025, "period_max_fraction": 0.25,
+    "vmd_alpha": 2000, "vmd_modes": 4, "vmd_background_modes": 2, "vmd_tolerance": 1e-7,
+    "qpgp_period_factors": [0.9, 1.0, 1.1], "qpgp_maxiter": 40,
+    "rpca_maxiter": 500, "rpca_tolerance": 1e-6
+  },
+  "evaluation": {"primary_multiplier": 3.0, "multipliers": [2.0, 3.0, 4.0], "bootstrap_repeats": 2000},
+  "initialization": {"signals": ["nominal_s0", "asymmetric_s0"], "seeds": [101, 102, 103, 104, 105], "phase_fraction": 0.1, "duration_fraction": 0.1, "amplitude_fraction": 0.1},
+  "cpu_threads": 1
+}
