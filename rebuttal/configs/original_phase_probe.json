@@ -1,0 +1,23 @@
+{
+  "experiment": "original_phase_probe",
+  "signal_dir": "auto",
+  "anomaly_dir": "auto",
+  "model_source": "auto",
+  "output_root": "rebuttal/outputs",
+  "device": "auto",
+  "signals": ["h2_s2", "cpl_h2_s2"],
+  "phase_shifts": [0, 50],
+  "epochs": 2000,
+  "learning_rate": 0.01,
+  "loss_scale": 10.0,
+  "seed": 0,
+  "cpu_threads": 1,
+  "parameters": {
+    "lambda1": 1.5,
+    "lambda2": 1.0,
+    "eta1": 0.15,
+    "eta2": 0.15,
+    "eta3": 0.05,
+    "psi": 2.0
+  }
+}
