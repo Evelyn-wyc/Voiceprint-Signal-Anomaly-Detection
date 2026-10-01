@@ -2,6 +2,10 @@
 
 入口：`experiments.py`。固定方案与参数见 [PROTOCOL.md](PROTOCOL.md) 和 [configs/necessary.json](configs/necessary.json)。正式结果由服务器运行产生。
 
+## 正则参数敏感性检验
+
+入口 `regularization.py`：分别将 λ 组、η 组、ψ 调为原值的 0.5 倍与 2 倍，连同默认值共 7 种配置。使用三个仿真种子及八份录音各自的首个片段，77 份结果中复用 11 份，新增 66 次拟合。服务器命令、来源核验和回传步骤见 [REGULARIZATION.md](REGULARIZATION.md)。结果写入 `rebuttal/outputs/regularization_v1/`。
+
 ## 周期先验与初始化对照
 
 入口 `period_prior.py`：周期 160/200/240，每个周期种子 0/1/2，比较历史固定初始化与当前输入估计初始化，共 18 份 QPAD 结果。复用三份已有默认结果后新增 15 次拟合。预检、服务器运行及回传步骤见 [PERIOD_PRIOR.md](PERIOD_PRIOR.md)，配置见 [configs/period_prior.json](configs/period_prior.json)。结果写入 `rebuttal/outputs/period_prior_v1/`，自动生成配对统计及图片。

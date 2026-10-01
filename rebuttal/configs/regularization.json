@@ -1,0 +1,51 @@
+{
+  "experiment": "regularization_v1",
+  "selection": {
+    "simulation_scenario": "nominal",
+    "simulation_seeds": [
+      0,
+      1,
+      2
+    ],
+    "expected_recordings": 8,
+    "real_rule": "first_segment_per_recording"
+  },
+  "qpad": {
+    "learning_rate": 0.01,
+    "loss_scale": 10.0,
+    "trace_every": 50,
+    "simulation": {
+      "K": 10,
+      "epochs": 2000,
+      "parameters": {
+        "lambda1": 1.5,
+        "lambda2": 1.0,
+        "eta1": 0.15,
+        "eta2": 0.15,
+        "eta3": 0.05,
+        "psi": 2.0
+      }
+    },
+    "real": {
+      "K": 12,
+      "epochs": 1500,
+      "parameters": {
+        "lambda1": 1.5,
+        "lambda2": 1.0,
+        "eta1": 0.3,
+        "eta2": 0.3,
+        "eta3": 0.1,
+        "psi": 10.0
+      }
+    }
+  },
+  "evaluation": {
+    "primary_multiplier": 3.0,
+    "multipliers": [
+      2.0,
+      3.0,
+      4.0
+    ]
+  },
+  "cpu_threads": 1
+}
