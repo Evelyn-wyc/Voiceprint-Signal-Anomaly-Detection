@@ -1,0 +1,12 @@
+{
+  "experiment": "period_prior_v1",
+  "simulation": {"scenario": "nominal", "length": 2000, "periods": [160, 200, 240], "seeds": [0, 1, 2]},
+  "qpad": {
+    "learning_rate": 0.01, "loss_scale": 10.0, "trace_every": 50,
+    "simulation": {"K": 10, "epochs": 2000, "parameters": {"lambda1": 1.5, "lambda2": 1.0, "eta1": 0.15, "eta2": 0.15, "eta3": 0.05, "psi": 2.0}}
+  },
+  "initialization": {"minimum_K": 2, "duration_fraction": 0.5},
+  "baselines": {"period_min_fraction": 0.025, "period_max_fraction": 0.25},
+  "evaluation": {"primary_multiplier": 3.0, "multipliers": [2.0, 3.0, 4.0]},
+  "cpu_threads": 1
+}

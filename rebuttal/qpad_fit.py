@@ -3,7 +3,7 @@ import importlib
 import numpy as np
 
 
-def fit_qpad(x, dataset, config, device, initialization_seed=None):
+def fit_qpad(x, dataset, config, device, initialization_seed=None, *, initial_state=None):
     import torch
     definitions = importlib.import_module('models.real' if dataset == 'real' else 'models.simulation')
     options = config['qpad']['real' if dataset == 'real' else 'simulation']
@@ -14,6 +14,21 @@ def fit_qpad(x, dataset, config, device, initialization_seed=None):
     opt.X = torch.tensor(x, dtype=torch.float32, device=device)
     for key, value in options['parameters'].items():
         setattr(opt, key, value)
+    if initial_state is not None:
+        if initialization_seed is not None:
+            raise ValueError('Use an explicit initial state or random perturbations, separately.')
+        expected = {'t_k': (options['K'],), 'T_active': (options['K'],),
+                    'M_independent': (options['K'],), 'A': (len(x),)}
+        if set(initial_state) != set(expected):
+            raise ValueError('Explicit initial state must contain t_k, T_active, M_independent, A.')
+        with torch.no_grad():
+            for key, shape in expected.items():
+                value = np.asarray(initial_state[key], dtype=float)
+                if value.shape != shape or not np.isfinite(value).all():
+                    raise ValueError(f'Invalid explicit initialization: {key}')
+                if key == 'T_active' and np.any(value <= 0):
+                    raise ValueError('Initial temporal scales must be positive.')
+                getattr(model, key).copy_(torch.as_tensor(value, dtype=torch.float32, device=device))
     if initialization_seed is not None:
         rng = np.random.default_rng(initialization_seed)
         perturb = config['initialization']
