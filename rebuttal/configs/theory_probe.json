@@ -1,0 +1,21 @@
+{
+  "experiment": "qpad_theory_probe_v1",
+  "solvers": ["amsgrad", "palm"],
+  "simulation": {"length": 2000, "period": 200, "seeds": [0], "scenarios": ["nominal", "asymmetric", "high_noise", "normal"]},
+  "initialization": {"signal": "sim_nominal_s0", "seeds": [101, 102, 103], "modes": ["local", "feasible_random"]},
+  "real": {"enabled": true, "expected_count": 88, "length": 3600, "recording_indices": [0, -1]},
+  "qpad": {
+    "simulation": {"K": 10, "epochs": 1000, "initial_duration": 100, "parameters": {"lambda1": 1.5, "lambda2": 1.0, "eta1": 0.15, "eta2": 0.15, "eta3": 0.05, "psi": 2.0}},
+    "real": {"K": 12, "epochs": 800, "initial_duration": 150, "parameters": {"lambda1": 1.5, "lambda2": 1.0, "eta1": 0.3, "eta2": 0.3, "eta3": 0.1, "psi": 10.0}}
+  },
+  "model": {"boundary_fraction": 0.05, "alignment_points": 64, "duration_bounds_in_scale": [0.15, 1.5], "amplitude_bound_factor": 4.0, "anomaly_bound_factor": 2.0, "anomaly_domain": "nonnegative"},
+  "proximal": {"eps_abs": 1e-8, "eps_rel": 1e-8, "max_iter": 20000, "residual_multiplier": 10.0},
+  "optimization": {
+    "check_every": 25, "stationarity_tolerance": 0.0001, "fixed_point_tolerance": 0.00001, "consecutive_checks": 3,
+    "amsgrad_learning_rate": 0.01, "amsgrad_decay_scale": 100.0, "amsgrad_decay_power": 0.6,
+    "step_growth": 1.2, "step_min": 1e-9, "step_max": 10000.0, "backtrack_factor": 0.5, "max_backtracks": 40,
+    "descent_fraction": 0.1, "descent_tolerance": 1e-10
+  },
+  "evaluation": {"multipliers": [2.0, 3.0, 4.0], "primary_multiplier": 3.0},
+  "cpu_threads": 1
+}

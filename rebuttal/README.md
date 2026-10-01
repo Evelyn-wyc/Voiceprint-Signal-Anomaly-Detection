@@ -2,6 +2,10 @@
 
 入口：`experiments.py`。固定方案与参数见 [PROTOCOL.md](PROTOCOL.md) 和 [configs/necessary.json](configs/necessary.json)。正式结果由服务器运行产生。
 
+## 模型与理论对应的求解实验
+
+新增入口 `theory_experiments.py`：在相同局部模板、L1/TV 正则和参数约束下，比较投影 AMSGrad 与近端分块求解（PALM）。默认 24 次小规模拟合，检查最优性残差、逐块下降、初值敏感性和检测效果。服务器命令、模型定义和结果判读见 [THEORY.md](THEORY.md)，配置见 [configs/theory_probe.json](configs/theory_probe.json)。结果写入 `rebuttal/outputs/theory_probe_v1/`。
+
 ## 实验范围
 
 | 实验 | 数据与运行 | 回应意见 |
